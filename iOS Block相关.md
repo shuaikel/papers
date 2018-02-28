@@ -56,5 +56,81 @@ int a = 5;
 --
 
 
+#### blcok循环引用的场景
+> 首先并不是所有的block，使用self都会出现循环引用，其实不是，系统和第三方框架的block绝大部分不会出现循环引用，只有少数block以及我们自定义的block会出现循环引用，
+> 	> 1.0 直接强引用
+> 	>	> 由于block会对block中的对象进行持有操作，而如果此时block中的对象又持有了该block，则会造成循环引用。如下：
 
+```
+typedef void(^block)();
+
+@property (copy, nonatomic) block myBlock;
+@property (copy, nonatomic) NSString *blockString;
+
+- (void)testBlock {
+	self.myBlock = ^() {
+    	//其实注释中的代码，同样会造成循环引用
+    	NSString *localString = self.blockString;
+    	//NSString *localString = _blockString;
+    	//[self doSomething];
+	};
+}
+```
+> 以下调用注释掉的代码同样会造成循环引用，因为不管是通过self.blockString还是\_blockString，或是调用函数[self doSomething]，因为只要block中用到了对象的属性或者函数，block就会持有该对象而不是该对象的某个属性或者函数。
+> 
+> 	> 1.1 间接强引用：self->某个类->block->self
+> 可能会产生控制器self永远都不会被释放掉产生常驻内存。
+
+
+######在实际开发中的循环引用
+> 使用通知（NSNotification），调用系统自带的Block，在blcok中使用self会发生循环引用
+> 
+
+#### 解决循环引用的办法:
+---
++	一般性解决办法
+
+```
+__weak typeof(self) weakSelf = self; 
+```
+
+通过__weak的修饰，先把self弱引用，然后在block回调里面用weakSelf，这样就会打破循环，从而避免循环引用
+> 
+> \_\_blcok与\_\_weak都可以用来解决循环引用，但是，\_\_block不管是ARC还是MRC模式下都可以使用，可以修饰对象，还可以修饰基本数据类型，\_\_weak只能在ARC模式下使用，也只能修饰对象，不能修饰基本数据类型，\_\_block对象可以在block中被重新赋值，\_\_block不可以。
+
+#### weak的缺陷
+> 缺陷
+> 如果我们想在Block中延时运行某段代码时，这里会出现一个问题，如一下代码：
+
+```
+ - (void)viewDidLoad {
+  	[super viewDidLoad];
+  	MitPerson*person = [[MitPerson alloc]init];
+  	__weak MitPerson * weakPerson = person;
+  	person.mitBlock = ^{
+  		dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+      		[weakPerson test];
+  		});
+  	};
+  	person.mitBlock();
+  }
+```
+> 直接运行这段代码会发现[weakPerson test];并没有执行，打印一下会发现，weakPerson已经是Nil了，这是由于当我们的ViewDidLoad方法运行结束，由于是局部变量，无论是MitPerson和WeakPerson都会被释放掉，那么这个时候在Block中就无法拿到真正的person内容了。
+
+解决办法：在block中对于可能会被提前释放的对象强引用，
+
+深入理解：
+
++ 首先了解一些概念：
+
+> 堆里面的block（被copy过的block）有以下现象：
+> 
+> 1. block内部如果通过外部声明的强引用来使用，那么block内部会自动产生一个强引用指向所使用的对象
+> 2. block内部如果通过外部声明的弱引用来使用，那么block内部会自动产生一个弱引用执行所使用的对象。
+
++ 这段代码的目的：
+	+ 首先，我们需要在Block块中调用，person对象的方法，既然是在Block块中我们就应该使用弱指针来引用外部变量，以此来避免循环引用，但是又会出现问题，就是当计时器要执行方法的时候，发现对象已经被释放掉了。
+	+ 为了避免person对象在计时器执行的时候被释放掉，为什么person对象会被释放掉呢？因为无论我们的person强指针还是weakPerson弱指针都是局部变量，当执行完ViewDidLoad的时候，指针会被销毁，对象只有在被强指针执行的时候才不会被销毁，而如果我们直接引用外部的强指针对象又会产生循环引用
+	+ 解决这个问题的办法是blcok引用外部的weakPerson，并在内部创建一个强指针去指向person对象，因为在内部声明变量，Block是不会强引用这个对象的，这也就避免person.mitBlcok出现循环引用风险的同时，又创建出一个强指针指向对象。
+	+ 之后再用GCD延时器Block来引用相对于它来说是外部的变量strongPerson，这时延时器Block会默认创建出来一个强引用person对象，当person.mitBlcok作用域结束之后strongPerson会被跟着销毁，内存中就仅剩下了延时器Block强引用着的person对象，2秒之后触发test方法，GCD Block内部方法执行完毕之后，延时器和对象都被销毁，这样就完美实现我们的需求
 
