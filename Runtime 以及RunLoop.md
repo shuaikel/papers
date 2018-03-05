@@ -509,3 +509,207 @@ CF_EXPORT CFRunLoopRef _CFRunLoopGet0(pthread_t t) {
 RunLoop内部实现流程：
 ![](http://upload-images.jianshu.io/upload_images/2230763-013c96b25cc33a2c.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
 
+#### runloop相关类
+###### Core Foundation中关于RunLoop的5个类
+	+ 	CFRunloopRef【RunLoop本身】
+	+ 	CFRunloopModeRef【Runloop的运行模式】
+	+ 	CFRunloopSourceRef【Runloop要处理的事件源】
+	+  CFRunloopTimerRef【Timer事件】
+	+  CFRunloopObserverRef【Runloop的观察者（监听者）】
+###### CFRunloop的5个相关类图解：
+
+![](http://upload-images.jianshu.io/upload_images/2230763-b082dfb38ca44c87.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+###### 图解直观得知：
++ 一条线程对应一个Runloop，Runloop总是运行在某种特定的CFRunLoopModeRef（运行模式）下。
++ 每个RunLoop都可以包含若干个Mode，每个Mode又包含Source源/Timer事件/Observer观察者。
++ 在RunLoop中有多个运行模式，如果需要切换Mode，只能是退出CurrentMode切换到指定的Mode进入，目的是保证不同Mode下的Source/Timer/Observer互不影响。
++ Runloop有效，mode里面至少要有一个timer（定时器事件）或者Source（源）。
+
+######源码：
+```
+struct __CFRunLoop {
+     CFRuntimeBase _base;
+     pthread_mutex_t _lock;          /* locked for accessing mode list */
+     __CFPort _wakeUpPort;           // used for CFRunLoopWakeUp 
+     Boolean _unused;
+     volatile _per_run_data *_perRunData;              // reset for runs of the run loop
+     pthread_t _pthread;
+     uint32_t _winthread;
+     CFMutableSetRef _commonModes;
+     CFMutableSetRef _commonModeItems;
+     CFRunLoopModeRef _currentMode;
+     CFMutableSetRef _modes;
+     struct _block_item *_blocks_head;
+     struct _block_item *_blocks_tail;
+     CFAbsoluteTime _runTime;
+     CFAbsoluteTime _sleepTime;
+     CFTypeRef _counterpart;
+ };
+ struct __CFRunLoopMode {
+     CFRuntimeBase _base;
+     pthread_mutex_t _lock;  /* must have the run loop locked before locking this */
+     CFStringRef _name; // mode名
+     Boolean _stopped;
+     char _padding[3];
+     CFMutableSetRef _sources0; // source0 源
+     CFMutableSetRef _sources1; // source1 源
+     CFMutableArrayRef _observers; // observer 源
+     CFMutableArrayRef _timers; // timer 源
+     CFMutableDictionaryRef _portToV1SourceMap;// mach port 到 mode的映射,为了在runloop主逻辑中过滤runloop自己的port消息。
+     __CFPortSet _portSet;// 记录了所有当前mode中需要监听的port，作为调用监听消息函数的参数。
+     CFIndex _observerMask;
+ #if USE_DISPATCH_SOURCE_FOR_TIMERS
+     dispatch_source_t _timerSource;
+     dispatch_queue_t _queue;
+     Boolean _timerFired; // set to true by the source when a timer has fired
+     Boolean _dispatchTimerArmed;
+ #endif
+ #if USE_MK_TIMER_TOO
+     mach_port_t _timerPort;// 使用 mk timer， 用到的mach port，和source1类似，都依赖于mach port
+     Boolean _mkTimerArmed;
+ #endif
+ #if DEPLOYMENT_TARGET_WINDOWS
+     DWORD _msgQMask;
+     void (*_msgPump)(void);
+ #endif
+     uint64_t _timerSoftDeadline; /* TSR timer触发的理想时间*/
+     uint64_t _timerHardDeadline; /* TSR timer触发的实际时间，理想时间加上tolerance（偏差*/
+ };
+```
+
+###### CFRunloopModeRef 代表RunLoop的运行模式；系统默认提供了5个Mode
++ kCFRunloopDefaultMode（NSDefaultRunLoopMode）：App的默认Mode，通常主线程是在这个Mode下运行
+
++ UITrackingRunLoopMode：界面跟踪Mode，用于ScrollView追踪触摸滑动，保证界面滑动时不受其它Mode影响。
+
++ UIInitiationRunLoopMode：接受系统事件的内部Mode，通常用不到。
+
++ GSEventReceiveRunLoopMode：接受系统事件的内部Mode，通常用不到。
+
++ kCFRunLoopCommonModes（NSRunLoopCommonModes）：这个并不是某种具体的Mode，可以说是一个占位的Mode（一种模式组合）
+
++ CFRunloop对外暴露的Mode接口：
+
+```
+# CFRunLoop
+CF_EXPORT void CFRunLoopAddCommonMode(CFRunLoopRef rl, CFRunLoopMode mode);
+CF_EXPORT CFRunLoopRunResult CFRunLoopRunInMode(CFRunLoopMode mode, CFTimeInterval seconds, Boolean returnAfterSourceHandled);
+# NSRunLoop.h
+FOUNDATION_EXPORT NSRunLoopMode const NSDefaultRunLoopMode;// (默认):同一时间只能执行一个任务
+FOUNDATION_EXPORT NSRunLoopMode const NSRunLoopCommonModes NS_AVAILABLE(10_5, 2_0); // (公用):可以分配一定的时间处理定时器
+```
+
+> 对照上面的源码：关于CommonModes：
+	
+> 【关于 \_commonModes】：一个mode可以标记为common属性（用于CFRunLoopAddComon），然后它就会保存在\_commonModes,主线程CommonModes默认已有两个mode，CFRunLoopDefaultMode和UITrackingRunLoopMode，当然你也可以通过CFRunLoopCommonMode（）方法将自定义的mode放到KCFRunLoopCommonModes组合。
+> 
+> 【关于_commonModeItems】：_commonModeItems里面存放的source，observer，timer等，在每次runloop运行的时候都会被同步到具有Common标记的Modes里，如：
+```
+[[NSRunLoop currentRunLoop] addTimer:_timer forMode:NSRunLoopCommonModes];
+就是把timer放到commonModeItems 里。
+```
+[更多关于RunLoop的资料](http://iphonedevwiki.net/index.php/CFRunLoop)
+
+###### CFRunloopSourceRef 事件源 \ 输入源，有两种分类模式
+![](/Users/luleios/Desktop/runloop.jpg)
+> 输入源以异步的方式向您的线程传递事件，事件的来源取决于输入源的类型，它通常是两类中的一类，基于端口的输入源监视你的应用程序的Mach端口（内核端口），自定义输入源监视自定义事件，就您的运行循环而言，系统通常会实现两种类型的输入源，您可以原样使用它们，两个来源之间唯一的区别是它们如何发出信号，基于端口的源由内核自动发送信号，自定义源必须从另一个线程手动发送信号。
+> 
+> 按照函数调用栈的分类source0 和 source1
+> 
+> 	+ Source0：非基于端口Port事件；（用于用户主动触发事件，如：点击按钮或点击屏幕）
+> 	+ Source1：基于端口Port的事件；（通过内核和其他线程相互发送消息，与内核相关）
+> 	+ Source1事件在处理时会分发一些操作给Source0处理。
+
+
+###### Timer
+> CFRunLoopTimerRef是基于时间的触发器
+> 
+> 基本上说的就是NSTimer（CADisplayLink也是加到RunLoop），它受RunLoop的影响。
+> 
+> 而与NSTimer相比，GCD定时器不会受到RunLoop的影响。
+> 
+> 定时器源在未来的预设时间将事件同步传递给您的线程，定时器是线程通知自己做事的一种方式，例如，搜索字段可以使用定时器在用户点击的连续击键之间经过一段时间后启动自动搜索，
+> 
+> 虽然它生成基于时间的通知，但计时器不是实时机制，与输入源一样，定时器与运行循环的特定模式相关联，如果定时器未处于运行循环当前正在监视的模式下，则只有在定时器支持的其中一种模式下运行循环时才会触发定时器，同样，如果在运行循环处理执行处理程序（handle router）时触发定时器，则定时器将等待下一次通过运行循环来调用其处理程序例程，如果运行循环根本没有运行，则定时器不会启动。
+> 
+
+###### Observer
+> 相对来说CFRunLoopObserver理解并不复杂，它相当于消息循环中的一个监听器，随时通知外部当前RunLoop的运行状态（它包含一个函数指针_callout_将当前状态及时告诉观察者），具体的Observer状态如下：
+> 
+```
+/* jianshu:白开水ln Run Loop Observer Activities */
+typedef CF_OPTIONS(CFOptionFlags, CFRunLoopActivity) {
+    kCFRunLoopEntry = (1UL << 0),           //即将进入Runloop
+    kCFRunLoopBeforeTimers = (1UL << 1),    //即将处理NSTimer
+    kCFRunLoopBeforeSources = (1UL << 2),   //即将处理Sources
+    kCFRunLoopBeforeWaiting = (1UL << 5),   //即将进入休眠
+    kCFRunLoopAfterWaiting = (1UL << 6),    //从休眠装填中唤醒
+    kCFRunLoopExit = (1UL << 7),            //退出runloop
+    kCFRunLoopAllActivities = 0x0FFFFFFFU   //所有状态改变
+};
+```
+
+###### RunLoop休眠
+>	其实对于Event Loop而言，RunLoop最核心的事情就是保证线程在没有消息时休眠以避免占用系统资源，有消息时能够及时唤醒，RunLoop的这个机制完全依靠系统内核来完成，具体来说就是苹果操作系统核心组件Darwin中的Mach来完成
+
+![](/Users/luleios/Desktop/2230763-ad034c393cfe948a.png)
+
+GCD定时器的优点：
+
+1. 与NSTimer相比，GCD定时器不会受RunLoop影响。
+2. GCD定时器是绝对准确的
+
+```
+    /**
+     创建GCD中的定时器
+
+     @param DISPATCH_SOURCE_TYPE_TIMER source类型，DISPATCH_SOURCE_TYPE_TIMER表示是定时器
+     @param 0 描述信息，线程ID
+     @param 0 更详细的描述信息
+     @param dispatchQueue ：队列，决定GCD定时器中的任务在哪个线程执行
+     @return 返回GCD定时器对象
+     */
+    dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, <#dispatchQueue#>);
+    
+    // 设置定时器（起始时间，时间间隔，精准度）
+    /**
+    timer：定时器对象
+    DISPATCH_TIME_NOW：起始时间，从现在开始
+    intervalInSeconds：时间间隔，GCD中时间单位为纳秒
+    leewayInSeconds：精准度，绝对精准0
+    *
+    */
+    dispatch_source_set_timer(timer, DISPATCH_TIME_NOW, <#intervalInSeconds#> * NSEC_PER_SEC, <#leewayInSeconds#> * NSEC_PER_SEC);
+    /**
+    设置定时器执行的任务
+    */
+    dispatch_source_set_event_handler(timer, ^{
+        <#code to be executed when timer fires#>
+    });
+    // 启动执行
+    dispatch_resume(timer);
+```
+
+--
+RunLoop 应用、场景
+
+1. NSTimer
+2. ImageView显示：控制方法在特定的模式下可用
+3. PerformSelector
+4. 常驻线程：在子线程中开启一个RunLoop
+5. AutoReleasePool自动释放池
+6. UI更新
+
+--
+
+> AutoReleasePool 自动释放池
+：AutoreleasePool是另一个与RunLoop相关讨论较多的话题，其实从RunLoop源代码分析，AutoreleasePool与RunLoop并没有直接的关系，之所以将两个话题放到一起讨论最主要的原因是因为iOS应用启动后会注册两个Observer管理和维护AutoreleasePool，可以在程序刚刚启动的时候打印currentRunloop可以看到系统默认注册了很多Observer，其中两个Observer的callout都是_wrapRunLoopWithAutoreleasePoolHandler，这两个和自动释放池相关的两个监听。
+
++ 第一个Observer会监听RunLoop的进入，它会回调objc\_autoreleasePoolPush()向当前的AutoreleasePoolPage增加一个哨兵对象标志创建自动释放池，这个Observer的order是-2147483647优先级最高，确保发生在所有回调操作之前。
++ 第二个Observer会监听RunLoop的进入休眠和即将退出RunLoop两种状态，在即将进入休眠时会调用objc\_autoreleasePoolPop（）和objc\_autoreleasePoolPush()根据情况从最新加入的对象一直往前清理到遇到哨兵对象，而在即将退出RunLoop时会调用objc\_autoreleasePoolPop（）释放自动释放池内对象。这个observer的order是2147483647，优先级最低，确保发生在所有回调操作之后。
++ 主线程的其他操作通常均在这个AutoReleasePool之内，以尽可能减少内存维护操作
+
+###### UI更新
+> 在应用程序启动之后，主线程RunLoop会默认注册一个callout为___ZN2CA11Transaction17observer\_callbackEP19\_\_CFRunLoopObservermPv__的Observer，这个
+
