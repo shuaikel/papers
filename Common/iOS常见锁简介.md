@@ -213,4 +213,10 @@ GCD中也已经提供了一种信号机制，使用它我们也可以来构建�
 ```
 [不建议使用](https://blog.ibireme.com/2016/01/16/spinlock_is_unsafe_in_ios/)
 
+###### OSSPinLock 的问题
+
+在新版iOS中，系统维护了5个不同的线程优先级: background,utility,default,user-initiated,user-interactive。高优先级线程始终会在低优先级线程前执行，一个线程不会受到比它更低优先级线程的干扰。这种线程调度算法会产生潜在的优先级反转问题，从而破坏了spin lock。
+
+具体来说，如果一个低优先级的线程
+
 
