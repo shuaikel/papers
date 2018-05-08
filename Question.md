@@ -424,4 +424,115 @@ Block里面的\_\_block的地址和Block的地址相差1052，我们可以很大
 解释：
 > ARC环境下，一旦Block赋值就会触发copy，__block就会copy带堆上，Block也是\_\_MallocBlock，ARC环境下也是存在\_\_NSStackBlock的时候，这种情况下，__Block就在栈上。
 > 
-> MRC环境下，只有copy，\_\_block才会被复制带堆上，否则，\_\_block一直都在栈上，block也只是
+> MRC环境下，只有copy，\_\_block才会被复制带堆上，否则，\_\_block一直都在栈上，block也只是\_\_NSStackBlock,这个时候\_\_forwarding指针就只指向自己了
+> 
+> 
+
+对象的变量：
+
+```
+//以下代码是在ARC下执行的
+#import <Foundation/Foundation.h>
+
+int main(int argc, const char * argv[]) {
+     
+    __block id block_obj = [[NSObject alloc]init];
+    id obj = [[NSObject alloc]init];
+
+    NSLog(@"block_obj = [%@ , %p] , obj = [%@ , %p]",block_obj , &block_obj , obj , &obj);
+    
+    void (^myBlock)(void) = ^{
+        NSLog(@"***Block中****block_obj = [%@ , %p] , obj = [%@ , %p]",block_obj , &block_obj , obj , &obj);
+    };
+    
+    myBlock();
+   
+    return 0;
+}
+```
+转换之后的源码：
+
+```
+struct __Block_byref_block_obj_0 {
+  void *__isa;
+__Block_byref_block_obj_0 *__forwarding;
+ int __flags;
+ int __size;
+ void (*__Block_byref_id_object_copy)(void*, void*);
+ void (*__Block_byref_id_object_dispose)(void*);
+ id block_obj;
+};
+
+struct __main_block_impl_0 {
+  struct __block_impl impl;
+  struct __main_block_desc_0* Desc;
+  id obj;
+  __Block_byref_block_obj_0 *block_obj; // by ref
+  __main_block_impl_0(void *fp, struct __main_block_desc_0 *desc, id _obj, __Block_byref_block_obj_0 *_block_obj, int flags=0) : obj(_obj), block_obj(_block_obj->__forwarding) {
+    impl.isa = &_NSConcreteStackBlock;
+    impl.Flags = flags;
+    impl.FuncPtr = fp;
+    Desc = desc;
+  }
+};
+static void __main_block_func_0(struct __main_block_impl_0 *__cself) {
+  __Block_byref_block_obj_0 *block_obj = __cself->block_obj; // bound by ref
+  id obj = __cself->obj; // bound by copy
+
+        NSLog((NSString *)&__NSConstantStringImpl__var_folders_45_k1d9q7c52vz50wz1683_hk9r0000gn_T_main_e64910_mi_1,(block_obj->__forwarding->block_obj) , &(block_obj->__forwarding->block_obj) , obj , &obj);
+    }
+static void __main_block_copy_0(struct __main_block_impl_0*dst, struct __main_block_impl_0*src) {_Block_object_assign((void*)&dst->block_obj, (void*)src->block_obj, 8/*BLOCK_FIELD_IS_BYREF*/);_Block_object_assign((void*)&dst->obj, (void*)src->obj, 3/*BLOCK_FIELD_IS_OBJECT*/);}
+
+static void __main_block_dispose_0(struct __main_block_impl_0*src) {_Block_object_dispose((void*)src->block_obj, 8/*BLOCK_FIELD_IS_BYREF*/);_Block_object_dispose((void*)src->obj, 3/*BLOCK_FIELD_IS_OBJECT*/);}
+
+static struct __main_block_desc_0 {
+  size_t reserved;
+  size_t Block_size;
+  void (*copy)(struct __main_block_impl_0*, struct __main_block_impl_0*);
+  void (*dispose)(struct __main_block_impl_0*);
+} __main_block_desc_0_DATA = { 0, sizeof(struct __main_block_impl_0), __main_block_copy_0, __main_block_dispose_0};
+
+
+int main(int argc, const char * argv[]) {
+
+    __attribute__((__blocks__(byref))) __Block_byref_block_obj_0 block_obj = {(void*)0,(__Block_byref_block_obj_0 *)&block_obj, 33554432, sizeof(__Block_byref_block_obj_0), __Block_byref_id_object_copy_131, __Block_byref_id_object_dispose_131, ((NSObject *(*)(id, SEL))(void *)objc_msgSend)((id)((NSObject *(*)(id, SEL))(void *)objc_msgSend)((id)objc_getClass("NSObject"), sel_registerName("alloc")), sel_registerName("init"))};
+
+    id obj = ((NSObject *(*)(id, SEL))(void *)objc_msgSend)((id)((NSObject *(*)(id, SEL))(void *)objc_msgSend)((id)objc_getClass("NSObject"), sel_registerName("alloc")), sel_registerName("init"));
+    NSLog((NSString *)&__NSConstantStringImpl__var_folders_45_k1d9q7c52vz50wz1683_hk9r0000gn_T_main_e64910_mi_0,(block_obj.__forwarding->block_obj) , &(block_obj.__forwarding->block_obj) , obj , &obj);
+
+    void (*myBlock)(void) = ((void (*)())&__main_block_impl_0((void *)__main_block_func_0, &__main_block_desc_0_DATA, obj, (__Block_byref_block_obj_0 *)&block_obj, 570425344));
+
+    ((void (*)(__block_impl *))((__block_impl *)myBlock)->FuncPtr)((__block_impl *)myBlock);
+
+    return 0;
+}
+
+```
+在转换出来的源码中，我们可以看到，Block捕获了\_\_block，并且强引用了，因为在\_\_Block\_byref\_block\_obj\_0结构体中，有一个变量是id block\_obj，这个默认也是带\_\_strong所有权修饰符的。
+
+根据打印出来的结果来看，ARC环境下，Block捕获外部变量，是都会copy一份的，地址都不同，只不过带有\_\_block修饰符的变量会被捕获到Block内部持有。
+
+而如果将上面的代码在MRC环境下运行，\_\_block根本不会对指针指向的对象执行copy操作，而只是把指针进行了复制。而在ARC环境下，对于声明为__block的外部对象，在block内部会进行retain，以至于在block环境内能安全的引用外部对象，所以才会产生循环引用的问题。
+
+
+
+
+##总结：
+5种变量：自动变量、函数参数、静态变量、静态全局变量、全局变量，如果严格的来说，捕获是必须在Block结构体\_\_main\_block\_impl\_0 里面有成员变量的话，Block能捕获的变量就只有自动变量和静态变量了。捕获进Block对象会被Block持有，
+
+> 对于非对象来讲，被copy进Block，不带\_\_block的自动变量只能在里面被访问，并不能改变值，
+
+>带\_\_block的自动变量和静态变量就是直接地址访问，所以在Block里面可以直接改变变量的值。
+
+>而剩下的静态全局变量、全局变量、函数参数，也是可以直接在Block里面改变变量的值得，但是他们并没有变成Block结构体\_\_main\_block\_impl\_0的成员变量，因为他们的作用域大，所以可以直接更改他们的值。
+
+>需要注意的是：静态全局变量、全局变量、函数参数他们并不会被Block持有，也就是说不会增加retainCount的值。
+>
+
+> 对于对象来说：
+
+> 	+ MRC 环境下，\_\_block根本不会被指针所指向的对象执行copy操作，而只是把指针进行复制。
+> 而在ARC环境下，对于声明为\_\_block的外部对象，在block内部会进行retain，以至于在block环境内能安全的引用外部对象。
+> 
+
+在ARC环境下，Block也是存在\_\_NSStackBlock的时候的，平时见到最多的是\_NSConcreteMallocBlock，是因为我们会对Block有赋值操作，所以在ARC下，block类型通过“=”进行传递时，会导致调用objc\_retainBlock->\_Block\_copy->\_Block\_Copy\_internal方法链。并导致\_\_NSStackBlock\_\_类型的Block转换为\_\_NSMallocBlock\_\_类型。

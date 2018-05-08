@@ -1,0 +1,27 @@
++ React Native 组件生命周期
+> [地址链接](https://www.jianshu.com/p/72f8c1da0b65)
+
+
++ 模态窗口基础组件
+
+> [地址链接](https://github.com/maxs15/react-native-modalbox)
+> 
+
+![](https://camo.githubusercontent.com/d4a496a80e4159490d873dcc37e93b71d6da7e0b/687474703a2f2f692e696d6775722e636f6d2f3358554c4c74382e676966)
+
+
++ 网路请求组件 
+> [地址链接](https://www.npmjs.com/package/axios)
+> 
+
++ 数据加密
+> [地址链接](https://www.npmjs.com/package/node-forge)
+> 
+
+
+
+
+> "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJVc2VySWQiOjgwNjE4MjgyLCJJRCI6IjQ4NzgwZjkzLTI4OWItNDhkNS05NWUzLTc1ZDZlMTI2MGVkMSIsIlRlbmFudElkIjoxLCJNZW1iZXJJZCI6ODA2MTg0NzIsIkF2YXRhciI6Imh0dHBzOi8vc3RhdGljLm1hbW1hc2F5LmNvbS9pbWFnZS8yMDE3MTIyOC82MzY1MDA1OTI5NzA3NzMzODM4MzU3ODc5LmpwZyIsIlJlYWxOYW1lIjoi5rWL6K-V5Y-36IOh5biF56eRIiwiTmlja05hbWUiOiJaRiIsIlBob25lIjoiMTg5NzAwNzcyNTYiLCJTZXNzaW9uS2V5IjpudWxsfQ.SIp2BJwUocq5T9gkgudvxnRi1ex4oKLhqZKirJuxFGA"
+> 
+> "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJVc2VySWQiOjgwNjE4MjgyLCJJRCI6IjQ4NzgwZjkzLTI4OWItNDhkNS05NWUzLTc1ZDZlMTI2MGVkMSIsIlRlbmFudElkIjoxLCJNZW1iZXJJZCI6ODA2MTg0NzIsIkF2YXRhciI6Imh0dHBzOi8vc3RhdGljLm1hbW1hc2F5LmNvbS9pbWFnZS8yMDE3MTIyOC82MzY1MDA1OTI5NzA3NzMzODM4MzU3ODc5LmpwZyIsIlJlYWxOYW1lIjoi5rWL6K-V5Y-36IOh5biF56eRIiwiTmlja05hbWUiOiJaRiIsIlBob25lIjoiMTg5NzAwNzcyNTYiLCJTZXNzaW9uS2V5IjpudWxsfQ.SIp2BJwUocq5T9gkgudvxnRi1ex4oKLhqZKirJuxFGA"
+
