@@ -536,3 +536,10 @@ int main(int argc, const char * argv[]) {
 > 
 
 在ARC环境下，Block也是存在\_\_NSStackBlock的时候的，平时见到最多的是\_NSConcreteMallocBlock，是因为我们会对Block有赋值操作，所以在ARC下，block类型通过“=”进行传递时，会导致调用objc\_retainBlock->\_Block\_copy->\_Block\_Copy\_internal方法链。并导致\_\_NSStackBlock\_\_类型的Block转换为\_\_NSMallocBlock\_\_类型。
+
+
+
+
+
+
+
