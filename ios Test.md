@@ -75,7 +75,7 @@ AutoreleasePoolPage结构体双向列表，里面的成员有：
 
 ```
 
-+ class_ro_t 和  class_rw_t 的区别？
++ class\_ro\_t 和  class\_rw\_t 的区别？
 
 ```
 class_ro_t 是class_rw_t的结构体成员变量， class_ro_t 存储对象的成员变量、以及
@@ -83,28 +83,101 @@ class_ro_t 是class_rw_t的结构体成员变量， class_ro_t 存储对象的�
 表，属性列表
 ```
 
-+ iOS 中内省的几个方法？class方法和objc_getClass方法有什么区别?
++ iskindOfClass：class 与 isMemberOfClass：class的区别
 
 ```
-class ，objc_getClass 方法返回的是类对象，
+iskindOfClass 是检查对象是否是那个类或者其继承类实例化的对象
+isMemberOfClass 是检查对象是否是那个类但不包括继承类实例化的对象。
+```
+
++ iOS 中内省的几个方法？class 和 objc_getClass方法有什么区别?
+
+```
+
+ios中内省的方法有很多： 可以有效的避免错误的进行消息转发，错误的假设对象相等问题，
+
++ iskindOfClass：class
++ isMemberOfClass：class
++ respondToSelector：selector
++ conformsToProtocol：protocol
++ isEqual：方法首先会检查指针的等同性，然后是类的等同性，最后调用对象的比较器进行比较，
+
+
+对于用户自定义的类 class ，objc_getClass 方法返回的是类对象（也就是类本身），
+而对于系统类，[obj class] 和 objc_getClass(obj) 由于类簇的存在，方法可能返回的对象不一致，但class 和 object_getClass(obj) 返回的结果一致。
+
 ```
 
 + 在运行时创建类的方法objc_allocateClassPair的方法名尾部为什么是pair（成对的意思）？
 
 ```
-
+objc_allocateClassPair 方法名后面是pair的原因是，需要同时创建类和元类
+（class、meta-class）
 ```
 
 + 一个int变量被__block修饰与否的区别？
+
 ```
-变量一般都存储在堆区，但当变量被__block修饰时，系统会将变量的存储方式由堆区转为栈区。
+变量一般都存储在堆区，但当变量被__block修饰时，系统会将变量的存储方式由堆区转为栈
+区。
 ```
 
 + 为什么在block外部使用__weak修饰的同时需要在内部使用__strong修饰？
 RunLoop的作用是什么？它的内部工作机制了解么？（最好结合线程和内存管理来说）
-哪些场景可以触发离屏渲染？（知道多少说多少）
+
+
 ```
-因为当
+用__weak修饰的对象需要在内部__strong修饰的原因是为了防止，在block执行的过程中，对象被提前释放的情况。
+
+Runloop的作用是 keep your thread busy where there is work to do and put your thread to sleep when there is none。
+
++ 保持程序的持续运行，程序启动的时候主线程运行，主线程启动的时候，主线程对应的runloop会被开启，runloop保证了主线程不会被销毁，也就保证了程序的持续运行。
++ 处理App中的各种事件（比如：触摸事件，定时器事件，Selector事件）
++ 节省CPU资源，提高程序性能，Runloop在运行时，当接收到Input sources 或者 Timer source时，
+
+内部工作机制：通过GNUStep源码可以看到，线程和Runloop是一一对应的，其关系保存在一个Dictionary里，所以我们创建子线程Runloop时，只需在子线程中获取当前线程的Runloop对象即可，如果不获取，那么子线程就不会创建与之相关联的Runloop，当Runloop创建时，从__CFRunloop的源码中我们可以看到，其中包含Runloop运行模式的CFRunLoopModeRef结构体，一个Runloop包含若干个Mode，每个Mode又包含若干个Source0/Source1/Timer/Observer，而RunLoop启动时只能选择其中一个Mode作为currentMode；在runloop开启后，会开启事件监听，当有事件唤醒时，根据事件源的类型，通过不同的函数回调处理，当Runloop的model为空或者mode里面没有source/timer/observer时，Runloop会通知Observer即将退出。App启动后，系统在主线程Runloop里面默认注册了两个Observer，其回调都是_wrapRunLoopWithAutoreleasePoolHandler(),
+第一个Observer监视的事件是Entry（即将进入Loop），其回调内会调用_objc_autoreleasePoolPush()创建自动释放池，其Order是-2147483647，优先级最高，保证创建释放池发生在所有回调之前
+第二个Observer监视了两个事件：BeforeWaiting（准备进入休眠）时调用_objc_autoreleasePoolPop()和_objc_autoreleasePoolPop()来释放自动释放池，这个Observer的order是2147483647，优先级最低，保证其释放池发生在所有其他回调之后                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
+
+```
+
+> 当调用NSObject的performSelector：afterDelay：后，实际上其内部会创建一个Timer并添加到当前的RunLoop中，所以如果当前线程没有RunLoop，则这个方法会失效
+> 
+> 当调用performSelector：onThread：时，实际上其会创建一个Timer加入到对应的线程，同样的，如果对应线程没有RunLoop该方法也会失效。
+
+
+
++ 哪些场景可以触发离屏渲染？（知道多少说多少）
+
+```
+离屏渲染：在使用圆角、阴影和遮罩等视图功能时，图层属性的混合体被指定为在未预合成之前不能直接在屏幕中渲染，所以就需要在屏幕外的上下文中进行渲染，即为离屏渲染
+
+iOS屏幕渲染的类型：CPU计算好显示内容提交到GPU，GPU渲染完成后将渲染结果放入帧缓冲区，随后视频控制器就会按照VSync信号逐行读取帧缓冲区的数据，经过可能的数模转换传递给显示器显示。
+
+：离屏渲染造成卡顿的原因：
+因为离屏渲染需要创建一个屏幕外的缓冲区，然后从当屏缓冲区切换到屏幕外的缓冲区，然后在完成渲染；其中创建屏幕外缓冲区和上下文最消耗性能，而绘制其实不是性能损耗的最主要原因。
+
++ 可能导致离屏渲染的原因：
+ 	1. shouldRasterize(光栅化)
+ 	2. masks(遮罩)
+ 	3. shadows(阴影)
+ 	4. edge antialiasing (抗锯齿)
+ 	5. group opacity (不透明)
+ 	6. 复杂形状设置圆角
+ 	7. 渐变
+
+```
+
++ block 里面Strong self后，block不是也会持有self吗？而self又持有block，那不是又循环引用了？
+
+```
+在block里面strong引用，保证了持有引用的周期只在block被执行时，闭包函数返回后就释放了，而直接用强引用，持有引用的周期则是block的生命周期，就会循环引用了。
+```
+
++ block的使用在什么情况下。不需要使用weak self
+
+```
+当block本身不被self持有，而被别的对象持有，同时不产生循环引用的时候，就不需要使用weak self了，最常见的代码就是UIView的动画代码，我们在使用UIView的animateWithDuration:animations动画的时候，并不需要使用weak self，因为引用持有的关系是：UIView 的某个动画对象持有了block，block持有了self，因为self并不持有block，所以就没有循环引用的产生，也就不需要使用weak self
 ```
 
 ---
