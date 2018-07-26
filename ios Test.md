@@ -22,7 +22,23 @@
 ```
 weak修饰的对象被释放时指向对象的指针也会被置为nil，可以避免野指针错误。
 	
-实现：当一个对象被weak修饰时，系统会以对象的地址为key，将对象加入由系统维护的Hash-Map中，当对象的引用计数为0时，找到相应的对象，释放对象的内存空间，同时将指向对象的指针置为nil；
+实现：当一个对象被weak修饰时，系统会以对象的地址为key，将对象加入由系统维护的CFMutableDictionary中，当对象的引用计数为0时，就会去这个全局的字典里面，将weak指针置为nil；
+具体的实现： Firday QA 上介绍了一种类似KVO的实现方式，当对象存在weak指针时，我们可以将这个实例指向一个新创建的子类，然后修改这个子类的release方法，在release方法中，去从全局的CFMutableDictionary字典中找到所有的weak对象（这里应该是找到弱引用本对象的地方，将其置为nil）
+
+Class subclass = objc_allocateClassPair(class, newNameC, 0); 
+
+Method release = class_getInstanceMethod(class, @selector(release)); 
+
+Method dealloc = class_getInstanceMethod(class, @selector(dealloc)); 
+
+class_addMethod(subclass, @selector(release), 
+(IMP)CustomSubclassRelease, method_getTypeEncoding(release)); 
+
+class_addMethod(subclass, @selector(dealloc), (IMP)CustomSubclassDealloc, method_getTypeEncoding(dealloc)); 
+
+objc_registerClassPair(subclass);
+
+
 #### sideTable
 ```
 
@@ -155,7 +171,16 @@ Runloop的作用是 keep your thread busy where there is work to do and put your
 iOS屏幕渲染的类型：CPU计算好显示内容提交到GPU，GPU渲染完成后将渲染结果放入帧缓冲区，随后视频控制器就会按照VSync信号逐行读取帧缓冲区的数据，经过可能的数模转换传递给显示器显示。
 
 ：离屏渲染造成卡顿的原因：
-因为离屏渲染需要创建一个屏幕外的缓冲区，然后从当屏缓冲区切换到屏幕外的缓冲区，然后在完成渲染；其中创建屏幕外缓冲区和上下文最消耗性能，而绘制其实不是性能损耗的最主要原因。
+因为离屏渲染需要创建一个屏幕外的缓冲区，然后从当屏缓冲区切换到屏幕外的缓冲区，然后在渲染完成后切换环境大到帧缓冲器；其中创建屏幕外缓冲区和上下文切换最消耗性能，而绘制其实不是性能损耗的最主要原因。
+
+使用Core graphics绘制API的确会触发离屏渲染，但不是GPU的离屏渲染，使用Core Grphics的绘制API是在CPU上执行，触发的是CPU版本的离屏渲染。
+
+CPU计算好显示内容提交到GPU，GPU渲染完成后将渲染结果放入帧缓冲区，随后视频控制器会按照VSync信号逐行读取帧缓冲区的数据，经过可能的数模转换传递给显示器显示；
+
++ 屏幕渲染的类型：
+	+ GPU的屏幕渲染：on-screen Rendering；即当前屏幕渲染，指的是渲染操作在当前用于显示的屏幕缓冲区中进行
+	+ off-screen Rendering；即离屏渲染，指的是GPU在当前屏幕缓冲区之外开辟了一个新的缓冲区进行渲染操作。
+	+ CPU中的离屏渲染（特殊离屏渲染，即不在GPU中的渲染）；如果我们重写了drawRect方法，并且使用任何Core Graphics的技术进行了绘制操作，就涉及了CPU渲染。
 
 + 可能导致离屏渲染的原因：
  	1. shouldRasterize(光栅化)
@@ -185,15 +210,104 @@ iOS屏幕渲染的类型：CPU计算好显示内容提交到GPU，GPU渲染完�
 + AppDelegate如何瘦身？
 
 ```
+
+在iOS开发中，Appdelegate很容易出现代码臃肿、调用顺序混乱、逻辑复杂的问题，作为UIApplication的代理类，是一个常驻内存的单例，它承载了很多的功能：
+	+ app的启动代码
+	+ 响应app的状态，比如app切换到后台和前台等状态
+	+ 响应外部传递给app的通知，比如说push，low-memory warnings
+	+ 决定了app的状态是否应该保存或者恢复
+	+ 响应不是发送给特定View或者VC，而是发送给app本身的事件
+	+ 用来保存一些不属于特定vc的数据。
+
++ 瘦身的方法大致分为两种：（1）从AppDelegate本身入手，通过这种方式减少AppDelegate的代码行数，比如：FRDModuleManager豆瓣开源的轻量级模块管理工具，它通过减少AppDelegate的代码量来把很多职责拆分到各个模块中去，或者通过代理的方式实现事件的分发、或者通过给appdelegate设置分类也可以解决（2）在架构层面就解决
+
 给Appdelegate添加分类
 ```
 
 + 反射是什么？可以举出几个应用场景么？（知道多少说多少）
+
+```
+反射是计算机程序在运行时检查、内省、修改自身结构和行为的一种能力。
+
+
+eg：根据后台推送过来的数据，进行动态页面的跳转，跳转到页面后根据返回的数据执行对应的操作；
+
+这个时候我们可以使用反射机制：我们可以用反射机制动态的创建类并执行方法，当然也可以通过runtime来实现这个功能，这个时候就需要和后台配合，我们首先需要和后台商量好返回的数据结构，以及数据格式、类型等，返回后我们按照和后台约定的格式，根据后台返回的信息，直接进行反射和调用即可。
+
+```
+
 + 有哪些场景是NSOperation比GCD更容易实现的？（或是NSOperation优于GCD的几点，知道多少说多少）
 ```
 当要控制线程的数量，以及需要建立线程间的依赖的时候，以及需要手动管理线程的挂起以及执行的时候，可以使用NSOperation。
 ```
 + App 启动优化策略？最好结合启动流程来说（main()函数的执行前后都分别说一下，知道多少说多少）
+
+```
+t(App总启动时间) = t1（main（）之前的加载时间）+t2(main()之后加载的时间)
+t1 = 系统dylib（动态链接库）和自身App可执行文件的加载
+t2 = main方法执行之后到Appdelegate类中：-（BOOL）Application：（UIApplication*）Application didFinishLaunchingWithOptions：（NSDictionary*）launchOptions；方法执行结束前这段时间，主要是构建第一个界面，并完成渲染展示。
+
+main（）调用之前的加载过程：App开始启动之后，系统首先可加载可执行文件（自身App的所有.o文件的集合，）然后加载动态链接库dyld，dyld是一个专门用来加载动态链接库的库。执行从dyld开始，dyld从可执行文件的依赖开始，递归加载所有的依赖动态链接库。
+
+动态链接库包括：iOS中用到的所有系统framework，加载OC Runtime方法的libobjc，系统级别的libSystem，例如libdispatch（GCD）和libsystem_blocks（Block）
+
+其实无论对于系统的动态链接库还是对于App本身的可执行文件来讲，他们都是image（镜像），而每个App都是以image（镜像）为单位进行加载的。
+除了我们App本身的可执行文件的，系统中所有的framework比如UIKit、Foundation等都是以动态链接库的方式集成进App中的。
+
+
+动态链接库加载的具体流程：
+
+1. load dylibs image 读取库镜像文件
+2. Rebase image 
+3. Bind image
+4. Objc setup
+5. initializers
+
+总的来概括就是：
+1. dyld开始将程序二进制文件初始化
+2. 交由ImageLoader读取Image，其中包含了我们的类，方法等各种符号。
+3. 由于runtime向dyld绑定了回调，当image加载到内存后，dyld会通知runtime进行处理
+4. runtime接手后调用mapimages做解析和处理，接下来loadimages中调用callloadmethods方法，遍历所有加载进来的Class，按继承层级依次调用Class的+load方法和其Category的+load方法。
+
+至此，可执行文件和动态库所有的符号（Class、Protocol、Selector、IMP。。。）都已经按格式加载到内存中，被runtime所管理，在这之后，runtime的那些方法（动态添加的class，swizzle等等才会生效。）
+
+在main（）之前我们能做的优化的点有：
+（1）减少不必要的framework，因为动态链接比较耗时
+（2）check framework应当设为optional和required，如果该framework在当前App的所有iOS系统版本都存在，那么就设为required，否则就设为optional，因为optional会有一些额外的检查
+(3)合并或者删减一些OC类，关于清理项目中没用到的类，使用工具AppCode代码检查功能。
+	+ 删除一些无用的静态变量
+	+ 删除没有被调用到或者已经废弃的方法
+	+ 将不必须在+load方法中做的事情延迟到+initialize中
+	+ 尽量不要用C++虚函数
+
+	
+main（）函数发生了什么：
+main()函数的执行会首先
+（1）创建应用程序UIApplication对象，
+（2）指定应用程序UIApplication代理
+（3）创建并开启主运行循环
+（4）加载应用程序配置信息info.plist文件，
+	1> 判断Main storyboard file base name中没有指定Main，即需要加载的StoryBoard文件
+	2> 如果指定了，就加载Main.storyBoard
+	3> 如果没有指定的话，就会黑屏
+
+
+main（）函数调用之后的加载时间：
+在main（）被调用之后，App的主要工作就是初始化必要的服务，显示首页内容等，而我们的优化也是围绕如何能够快速展现首页来开展。App通常在AppDelegate类的-（BOOL）Application：（UIApplication*）application didFininshLaunchingWithOptions：（NSDictionary*）launchOptions;方法中创建首页需要显示的View，然后在当前runloop的末尾，主动调用CA::Transation::commit完成视图的渲染
+
+而视图的渲染主要涉及三个阶段：
+1. 准备阶段 这里主要是图片的解码
+2. 布局阶段 首页所有UIView的-（void）layoiutSubView()运行
+3. 绘制阶段 首页所有UIView的- (void) drawRect:(CGRect)rect运行
+
+因此对于main（）函数调用之前我们可以优化的点有：
+1. 不使用xib，直接使用代码加载首页视图
+2. 避免读取大容量的Plist文件
+3. 删除启动时各业务方的log
+4. 梳理启动时发送的网络请求，是否可以统一在异步线程请求
+
+```
+
 + App 无痕埋点的思路了解么？你认为理想的无痕埋点系统应该具备哪些特点？（知道多少说多少）
 + 你知道有哪些情况会导致app崩溃，分别可以用什么方法拦截并化解？（知道多少说多少）
 
