@@ -704,6 +704,48 @@ RunLoop 应用、场景
 --
 
 > AutoReleasePool 自动释放池
+
+> : AutoAutoReleasePool 创建：
+> >（1）有多种创建AutoReleasePool的方法，
+> >
+	> 在线程创建的时候，系统会自动创建。
+	> 在MRC环境下，可以通过NSAutoreleasePool手动创建。
+	> 通过@autoreleasepool创建
+> > (2) 自动释放池的销毁
+> > 
+	 > 在每一次runloop结束时，系统会将栈顶的pool销毁，
+	 > 在MRC环境下，release pool时，autoreleasepool会被销毁
+	 
+>> * 如果一个变量在自动释放池之外创建，如下，需要通过__autoreleaseing修饰符将其加入到自动释放池。
+>> 
+>> autoreleasepool的作用：系统通过@autoreleasepool{}这种方式来为我们创建自动释放池的，一个线程对应一个runloop，系统会为每一个runloop隐式的创建一个自动释放池，所有的autoreleasepool构成一个栈式结构，在每个runloop结束时，当前栈顶的autoreleasepool会被销毁，会对其中的每一个对象做一次release（严格来说，是对对象进行了几次autorelease就会做几次release，不一定是一次），
+>> 
+>> 特别需要注意：使用容器的block版本的枚举器的时候，系统会自动添加一个autoreleasePool
+
+```
+[array enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+// 这里被一个局部@autoreleasepool包围着
+}];
+```
+
+>> 
+>> 
+>> 自动释放池的应用场景:  
+
+```
+ MRC：
+ 	+ 对象作为函数返回值:
+ 	当一个对象要作为函数返回值得时候，因为要遵循谁申请谁释放的原则，
+ 	所以应该在返回之前释放，但要是返回之前释放了，就会造成野指针错
+ 	误，为了解决这个问题，可以使用autoreleasepool延迟释放的特性，
+ 	将其在返回之前做一次autorelease，将其加入到自动释放池中，这样就
+ 	可以保证正常返回，同时也可以做到在一次runloop之后，系统会自动帮我们释放他。
+ 	
+ 	+ 临时生成大量对象，一定要将自动释放池放在for循环里面，要释放在外
+ 	面，就会因为大量对象得不到及时释放，而造成内存紧张，最后程序意外退出
+```
+>> 
+>> 
 ：AutoreleasePool是另一个与RunLoop相关讨论较多的话题，其实从RunLoop源代码分析，AutoreleasePool与RunLoop并没有直接的关系，之所以将两个话题放到一起讨论最主要的原因是因为iOS应用启动后会注册两个Observer管理和维护AutoreleasePool，可以在程序刚刚启动的时候打印currentRunloop可以看到系统默认注册了很多Observer，其中两个Observer的callout都是_wrapRunLoopWithAutoreleasePoolHandler，这两个和自动释放池相关的两个监听。
 
 + 第一个Observer会监听RunLoop的进入，它会回调objc\_autoreleasePoolPush()向当前的AutoreleasePoolPage增加一个哨兵对象标志创建自动释放池，这个Observer的order是-2147483647优先级最高，确保发生在所有回调操作之前。

@@ -156,6 +156,32 @@ iskindOfClass 是检查对象是否是那个类或者其继承类实例化的对
 isMemberOfClass 是检查对象是否是那个类但不包括继承类实例化的对象。
 ```
 
++ ios中动态解析方法流程图：
+
+![](https://user-gold-cdn.xitu.io/2018/7/2/16456e432e5b2266?imageslim)
+
++ ios 消息转发流程图
+
+```
+当通过对象的isa指针找不到方法的实现，而又没有对方法进行动态解析的时候，会进行消息转发，会调用_objc_msgForward_impcache函数，其内部是实现也是根据函数返回的对象调用objc_msgSend，重新走一遍消息发送，动态解析，消息转发的过程，最终找到方法进行调用。如果消息转发函数forwardingTargetForSelector方法返回nil或者没有实现的话，就会调用methodSignatureForSelector方法，用来返回一个方法签名，这也是最后正确跳转方法的机会。
+
+[如果methodSignatureForSelector方法返回正确的方法签名就会调用
+forwardInvocation方法，forwardInvocation方法内部提供一个
+NSInvocation类型的参数，NSIvocation封装了一个方法的调用，包括方法的
+调用者，方法名，以及方法的参数，在forwardInvocation函数内修改方法调
+用对象即可]
+
+[如果methodSignatureForSelector返回的为nil，就会来到doseNotRecognizeSelector：]方法内部，程序crash提示无法识别选择器。
+
+NSInvocation : methodSignatureForSelector 方法中返回的方法签名，在forwardInvocation中被包装成NSInvocation对象，NSInvocation提供了获取和修改方法名、参数、返回值等方法，也就是说在forwardInvocation函数中我们可以对方法进行最后的修改。
+
+```
+##### 消息转发流程图
+![](https://user-gold-cdn.xitu.io/2018/7/2/16456e432f0a99c7?imageslim)
+
+
+
+
 + iOS 中内省的几个方法？class 和 objc_getClass方法有什么区别?
 
 ```
