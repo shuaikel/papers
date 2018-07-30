@@ -1,3 +1,4 @@
+
 + 分类和扩展有什么区别？可以分别用来做什么？分类有哪些局限性？分类的结构体里面有哪些成员？
 
 ```
@@ -94,9 +95,58 @@ AutoreleasePoolPage结构体双向列表，里面的成员有：
 + class\_ro\_t 和  class\_rw\_t 的区别？
 
 ```
-class_ro_t 是class_rw_t的结构体成员变量， class_ro_t 存储对象的成员变量、以及
+class_rw_t是可读可写的，而class_ro_t可读不可写。
+最初类的方法、属性、成员变量属性协议等等都是存放在class_ro_t中的，当程序运行的时候
+需要将分类中的列表跟类初始的列表合并在一起时，就会将class_ro_t中的列表和分类中的列表合并起来存储在class_rw_t中，也就是说class_rw_t中有部分列表是从class_ro_t里面拿出来的，并最终和分类的方法合并。可以通过源码realizeClass查看到。通过源码我们可以发现，类的初始信息本来是存储在class_ro_t中的，并且ro本来是指向cls->data()的，也就是说bits.data()得到的ro，但是在运行过程中创建了class_rw_t，并将cls->data指向了rw,同时将初始信息ro赋值给rw中的ro，最后在通过setData（rw）设置data，那么此时bits.data()得到的就是rw，之后再去检查分类，同时将分类中的方法，属性，协议列表存储在class_rw_t的方法、属性及协议列表中。
+
+
+<!--class_ro_t 是class_rw_t的结构体成员变量， class_ro_t 存储对象的成员变量、以及
 成员变量的size。类名。 class_rw_t 包含 class_ro_t类型成员，方法列表，协议列
-表，属性列表
+表，属性列表-->
+```
+
++ class_rw_t 是如何存储方法的
+
+```
+我们知道method_array_t、property_array_t、protocol_array_t中以method_array_t为例，method_array_t中最终存储的是method_t,method_t是对方法、函数的封装，每一个方法对象就是一个method_t，
+
+method_t 结构体定义：
+struct method_t{
+	SEL name; //函数名
+	const char *types; // 编码 （返回值类型，参数类型）
+	IMP imp; // 指向函数的指针
+}
+
+method_t结构体中有三个成员变量，
+SEL： 代表方法、函数名，一般叫做选择器，底层结构跟char*类似typedef struct
+objc_selector *SEL; 可以把SEL看做是方法名字符串。SEL可以通过@selector()和sel_registerName()获得，也可以通过sel_getName()和NSStringFromSelector()将SEL	转成字符串。不同类中相同名字的方法，所对应的方法选择器是相同的，
+SEL仅仅代表方法的名字，并且不同类中相同的方法名的SEL是全局唯一的。
+
+types：包含了函数返回值，参数编码的字符串，通过字符串拼接的方式将返回值和参数拼接成一个字符串，来代表函数返回值及参数。我们可以通过代码查看一下types是如何代表函数返回值及参数的，通过强制类型转换，类型转换编码
+
+
+IMP：代表函数的具体实现，存储的内容是函数地址，也就是说当找到imp的时候就可以找到函数实现，进而对函数进行调用。当多次继承的子类想要调用基类的方法时，就需要通过superclass指针一层一层找到基类，在基类方法列表中找到对应的方法进行调用，如果多次调用基类方法，就需要多次遍历每一层父类的方法列表，这是非常消耗性能的，apple通过方法缓存的形式解决了这一问题
+
+在类对象结构体中，成员变量cache就是用来对方法进行缓存的。
+cache_t cache； 用来缓存曾经调用过的方法，可以提高方法的查找速度。
+每当调用这个方法的时候，会先去cache中查找是否有缓存的方法，如果没有缓存，在去类对象方法列表中查找，以此类推直到找到方法之后，就会将方法直接存储在cache中，下一次在调用这个方法的时候，就会在类对象的cache中找到这个方法，直接调用。
+
+cache_t如何进行缓存：
+struct cache_t{
+	struct bucket_t * _buckets; // 散列表
+	mask_t _mask; // 散列表的长度 -1
+	mask_t _occupoied; // 已经缓存的方法数量
+}
+
+bucket_t 是以数组的方式存储方法列表，看一下bucket_t内部结构
+struct bucket_t {
+	private:
+		cache_key_t key;// SEL作为key
+		IMP _imp;   // 函数的内存地址
+}
+
+从源码中可以看到bucket_t中存储这SEL和_imp，通过key->value的形式
+
 ```
 
 + iskindOfClass：class 与 isMemberOfClass：class的区别
