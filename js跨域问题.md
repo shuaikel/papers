@@ -3,6 +3,72 @@
 我们经常会看到上边类似的报错，Access-Cotrol-Allow-Origin 这是典型的跨域报错。其实我们通常所说的跨域是狭义的，是由浏览器同源策略限制的一类请求场景。那什么是同源策略呢？
 
 
+#### 什么是ajax跨域，如何解决ajax跨域？ 如何分析ajax跨域
+
+##### ajax出现跨域错误问题，主要原因是因为浏览器的”同源策略“
+
+CORS是一个W3C标准，全称为“跨域资源共享”（Cross-origin resource sharing）。它允许浏览器向跨域服务器，发出XMLHttpRequest请求，从而克服了AJAX只能同源使用的限制。
+
+### ajax跨域的表现
+
+```
+现象一: No 'Access-Control-Allow-Origin' header is present on the requested resource,并且The
+ response had HTTP status code 404
+ 
+ 出现这种情况的原因如下：
+ 
+ + 本次ajax请求是“非简单请求”，所以请求前会发送一次预检请求（OPTIONS）
+ + 服务器后台接口没有允许OPTIONS请求，导致无法找到对应接口地址
+
+ ++ 解决方案：后端允许options请求。
+```
+
+```
+现象二: No 'Access-Control-Allow-Origin' header is present on the requested resource,并且The response had HTTP status code 405
+
+  这种情况下：
+  + 后台方法允许OPTIONS请求，但是一些配置文件中（如安全配置），阻止了OPTIONS请求，才会导致这个现象
+  
+  ++ 解决方案：后端关闭对应的安全配置
+```
+
+```
+现象三: No 'Access-Control-Allow-Origin' header is present on the requested resource,并且status 200
+
+	这种情况下：
+	服务器端后台允许OPTIONS请求,并且接口也允许OPTIONS请求,但是头部匹配时出现不匹配现象，比如origin头部检
+	查不匹配,比如少了一些头部的支持(如常见的X-Requested-With头部),然后服务端就会将response返回给前端,前
+	端检测到这个后就触发XHR.onerror,导致前端控制台报错
+	
+	解决方案：后端增加对应的头部支持
+```
+
+
+```
+现象四: heade contains multiple values '*,*'
+
+这种问题出现的主要原因就是进行跨域配置的人不了解原理，导致了重复配置，如：
+
+| 常见于.net后台(一般在web.config中配置了一次origin,然后代码中又手动添加了一次origin(比如代码手动设置了返回*))
+
+| 常见于.net后台(在IIS和项目的webconfig中同时设置Origin:*)
+
+解决方案（一一对应）: 
+
+建议删除代码中手动添加的*，只用项目配置中的即可；
+
+建议删除IIS下的配置*，只用项目配置中的即可。
+
+```
+
+```
+二、如何解决ajax跨域
+
+
+```
+
+
+
 #### 什么是同源策略
 
 ```
@@ -58,7 +124,7 @@ http://www.a.com/b.js         不同域名                         不允许
 
 ```
 	1、 通过jsonp跨域
-	2、CORS
+	2、 CORS
 	3、 document.domain + iframe跨域
 	4、 location.hash + iframe
 	5、 window.name + iframe跨域
@@ -248,21 +314,3 @@ location / {
 ```
 
 ```
-
-##### 小程序开发中常用的一些基础组件
-
-+ 网络请求封装
-
-+ 一些常用的正则校验工具类
-
-+ Page创建的封装，便于一些全局配置
-
-+ Toast弹窗
-
-
-
-+ 1、商品详情、下单代码逻辑优化
-+ 2、工程一些不需要的资源清理，
-+ 3、工程代码一些布局警告问题优化
-+ 4、工程中一些兼容性组件替换。
-+ 5、
