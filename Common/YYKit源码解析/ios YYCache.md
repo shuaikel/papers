@@ -2,7 +2,9 @@
 [YYCache](https://github.com/ibireme/YYCache)是国内开发者[ibireme](https://blog.ibireme.com/)开源的一个线程安全的高性能缓存组件，代码风格简洁清晰，
 
 ### 架构图与成员职责划分
+
 > 架构图
+
 ![](https://user-gold-cdn.xitu.io/2018/1/22/1611c66be5bd7907?imageslim)
 
 
