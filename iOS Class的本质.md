@@ -25,7 +25,7 @@ struct objc_class {
 
 新版本的objc_class 定义:
 
-![](/Users/shuaike/Desktop/FBD8B798-A73F-4B0B-A83E-11DEF0A2AEFA.png)
+![](/Users/shuaike/Desktop/F993032A-77C5-4CBA-B0E5-BAB8585DEF64.png)
 
 ```
 
