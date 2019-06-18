@@ -1,9 +1,6 @@
-#### AutoreleasePool对象什么时候释放：
+#### AutoreleasePool
 
 > 新建一个XCode项目，将项目调整成MRC,Target -> Build Sttings -> All -> 搜索‘automatic’ -> 把 Objective-C Automatic Reference Counting 设置为 NO
-> 
-> 
-
 
 在MRC中，需要使用retain、release、autorelease手动管理内存，如下代码：
 
@@ -37,43 +34,32 @@ int main(int argc, const char * argv[]) {
 	return 0;
 }
 ```
- 打印结果：
  
- ![](https://raw.githubusercontent.com/SunshineBrother/JHBlog/master/iOS%E7%9F%A5%E8%AF%86%E7%82%B9/iOS%E5%BA%95%E5%B1%82/%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/AutoreleasePool1.png)
- 
- 
- **AutoreleasePool具体做了什么呢？ 我们首先查看**AutoreleasePool的实现原理
+**AutoreleasePool具体做了什么呢？ 我们首先查看**AutoreleasePool的实现原理
  
  通过:
  
 ``` 
-xcrun -sdk iphoneos clang -arch arm64 -rewrite-objc main.m 命令将 main.m 转成 C++ 
-代码
+xcrun -sdk iphoneos clang -arch arm64 -rewrite-objc main.m 命令将 main.m 转成 C++ 代码
 ```
- 
 我们可以找到AutoreleasePool的实现：
-  
 
 ```
-
 int main(int argc, const char * argv[]) 
 {
 
 /* @autoreleasepool */ { __AtAutoreleasePool __autoreleasepool; 
-	Person *p = ((Person *(*)(id, SEL))(void *)objc_msgSend)((id)((Person *(*)(id, SEL))(void *)objc_msgSend)((id)((Person *(*)(id, SEL))(void *)objc_msgSend)((id)objc_getClass("Person"), sel_registerName("alloc")), sel_registerName("init")), sel_registerName("autorelease"));
-}
+
+		Person *p = ((Person *(*)(id, SEL))(void *)objc_msgSend)((id)((Person *(*)(id, SEL))(void *)objc_msgSend)((id)((Person *(*)(id, SEL))(void *)objc_msgSend)((id)objc_getClass("Person"), sel_registerName("alloc")), sel_registerName("init")), sel_registerName("autorelease"));
+	}
 	return 0;
 }
-
-```
-会发现@autoreleasepool会被转成：
-
-```
-__AtAutoreleasePool __autoreleasepool;
-
 ```
 
-而\_\_AtAutoreleasePool我们全局查看发现它是一个结构体：
+会发现@autoreleasepool会被转成：**__AtAutoreleasePool __autoreleasepool;**
+
+
+而**\_\_AtAutoreleasePool**我们全局查看发现它是一个结构体：
 
 ```
 struct __AtAutoreleasePool {
@@ -118,36 +104,34 @@ objc_autoreleasePoolPop(atautoreleasepoolobj);
 
 **AutoreleasePoolPage**
 
-对于objc_autoreleasePoolPush和objc_autoreleasePoolPop 的实现我们可以在runtime源码中查找相关实现
+对于objc_autoreleasePoolPush和objc_autoreleasePoolPop 的实现我们可以在runtime源码NSObject.mm中查找相关实现
 
 ```
-objc_autoreleasePoolPush(void)
+void *objc_autoreleasePoolPush(void)
 {
 	return AutoreleasePoolPage::push();
 }
-
-void
-objc_autoreleasePoolPop(void *ctxt)
+void objc_autoreleasePoolPop(void *ctxt)
 {
 	AutoreleasePoolPage::pop(ctxt);
 }
 ```
 
+我们可以发现：push()函数和pop(ctxt)函数都是有AutoreleasePoolPage类来调用的。
 
-我们可以发现：push（）函数和pop（ctxt）函数都是有AutoreleasePoolPage类来调用的。
-
-
-对于AutoreleasePoolPage类，我们查看成员变量，对于一些静态常亮我们就不过多的探究，我们就来查看一下成员变量。
+对于AutoreleasePoolPage类，我们查看成员变量:
 
 ```
+// 查看NSObject.mm 文件可以看到关于AutoreleasePoolPage的类定义
 class AutoreleasePoolPage 
 {
-	magic_t const magic;//用于数据校验
+#  define POOL_BOUNDARY nil (哨兵对象)
+	magic_t const magic;//用于对当前AutoreleasePoolPage完整性校验
 	id *next;//栈顶地址
 	pthread_t const thread;//所在的线程
-	AutoreleasePoolPage * const parent;//父对象
-	AutoreleasePoolPage *child;//子对象
-	uint32_t const depth;//page的序号？
+	AutoreleasePoolPage * const parent;// 父结点
+	AutoreleasePoolPage *child;// 子节点
+	uint32_t const depth; // 深度 
 	uint32_t hiwat;
 	// ...
 }
@@ -167,7 +151,6 @@ class AutoreleasePoolPage
 + 6、AutoreleasePoolPage 空间被占满时，会以链表的形式新建链接一个 AutoreleasePoolPage 对象，然后将新的autorelease对象的地址存在child指针
 
 #### push()函数实现
-
 ```
 static inline void *push() 
 {
@@ -182,37 +165,39 @@ static inline void *push()
 	return dest;
 }
 
-1、 在DebugPoolAllocation线程池满了以后，会调用autoreleaseNewPage(POOL_BOUNDARY)来创建一个新的线程池。
+1、 在DebugPoolAllocation线程池满了以后，会调用
+autoreleaseNewPage(POOL_BOUNDARY)来创建一个新的线程池。
 
-2、线程池没有满的时候调用autoreleaseFast函数，以栈的形式压入线程池中。
+2、线程池没有满的时候调用autoreleaseFast函数，以栈的形式压入线程池
+中。
 
 ```
 
 ```
 static inline id *autoreleaseFast(id obj)
 {
-	AutoreleasePoolPage *page = hotPage();
+	AutoreleasePoolPage *page = hotPage(); // hotPage 可以理
+	解为当前正在使用的 AutoreleasePoolPage。
 	if (page && !page->full()) {
-	return page->add(obj);
+		return page->add(obj);
 	} else if (page) {
-	return autoreleaseFullPage(obj, page);
+		return autoreleaseFullPage(obj, page);
 	} else {
-	return autoreleaseNoPage(obj);
+		return autoreleaseNoPage(obj);
 	}
 }
 
-1、有 hotPage 并且当前 page 不满，调用 page->add(obj) 方法将对象添加至
- AutoreleasePoolPage 的栈中
+1、有 hotPage 并且当前 page 不满，调用 page->add(obj) 方法将对象添加至AutoreleasePoolPage 的栈中
  
-2、有 hotPage 并且当前 page 已满，调用 autoreleaseFullPage 初始化一个新的页，调用 page-
->add(obj) 方法将对象添加至 AutoreleasePoolPage 的栈中
+2、有 hotPage 并且当前 page 已满，调用 autoreleaseFullPage 初始
+化一个新的页，调用 page->add(obj) 方法将对象添加AutoreleasePoolPage 的栈中
 
-3、无 hotPage，调用 autoreleaseNoPage 创建一个 hotPage，调用 page->add(obj) 方法将对象
-添加至 AutoreleasePoolPage 的栈中
+3、无 hotPage，调用 autoreleaseNoPage 创建一个 hotPage，调用
+ page->add(obj) 方法将对象添加至 AutoreleasePoolPage 的栈中
 
 ```
 
-#### pop函数（）函数
+#### pop函数（）
 
 ```
 // 简化后
@@ -235,7 +220,7 @@ static inline void pop(void *token)
 }
 ```
 
-来到releaseUntil(...)内部：
+#### 来到releaseUntil(...)内部：
 
 ```
 // 简化后
@@ -259,7 +244,7 @@ void releaseUntil(id *stop)
 }
 
 ```
-+ 外部循环挨个遍历 autoreleased 对象，直到遍历到 stop 这个 POOL_BOUNDARY 。
++ 外部循环挨个遍历 autoreleased 对象，直到遍历到stop这个POOL_BOUNDARY 。
 
 + 如果当前 hatPage 没有 POOL_BOUNDARY，将 hatPage 设置为父节点。
 
@@ -267,10 +252,11 @@ void releaseUntil(id *stop)
 
 + 再次配置 hatPage。
 
+#### AutoreleasePool对象什么时候释放：
 
 ```
-	RunLoop的状态枚举：
-	
+RunLoop的状态枚举：
+
 typedef CF_OPTIONS(CFOptionFlags, CFRunLoopActivity) {
 	kCFRunLoopEntry = (1UL << 0),              // 1
 	kCFRunLoopBeforeTimers = (1UL << 1),       // 2
@@ -285,7 +271,6 @@ typedef CF_OPTIONS(CFOptionFlags, CFRunLoopActivity) {
 用 _objc_autoreleasePoolPush() 创建一个自动释放池。其 order 是 -2147483647，优先级最高
 保证创建缓存池发生在其他所有回调之前。
 
-
 + 0xa0（16进制等于160，等于32+128） 对应的是 kCFRunLoopBeforeWaiting&kCFRunLoopExit
 第二个 Observer 监视了两个事件： 准备进入休眠时调用 _objc_autoreleasePoolPop() 和 
 _objc_autoreleasePoolPush() 释放旧的池并创建新池；即将退出Loop时调用
@@ -293,7 +278,6 @@ _objc_autoreleasePoolPop()来释放自动释放池。这个 Observer 的 order �
 级最低，保证其释放缓存池发生在其他所有回调之后。
 
 ```
-
 
 #### 具体步骤
 
@@ -303,7 +287,7 @@ _objc_autoreleasePoolPop()来释放自动释放池。这个 Observer 的 order �
 
 + 第2个Observer监听了kCFRunLoopBeforeWaiting事件，会调用objc_autoreleasePoolPop()、objc_autoreleasePoolPush() 监听了kCFRunLoopBeforeExit事件，会调用objc_autoreleasePoolPop()
 
-autoreleased 对象是在 runloop 的即将进入休眠时进行释放的
+<p style="font-size:28px;color:#f51c26">autoreleasepool 对象是在 runloop 的即将进入休眠时和线程即将退出时会调用autoreleasepool的pop方法进行释放。</p>
 
 
 
