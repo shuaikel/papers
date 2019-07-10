@@ -1,5 +1,6 @@
 Flutter是Google开发的一套全新的跨平台、开源UI框架，支持iOS、Android系统开发，并且是未来新操作系统Fuchsia的默认开发套件。自从2017年5月发布**第一个版本**以来，目前Flutter已经发布了近60个版本，并且在2018年5月发布了第一个**“Ready for Production Apps”**的Beta 3版本，6月20日发布了第一个**“Release Preview”**版本。
 
+[美团外卖blog](https://tech.meituan.com/2018/08/09/waimai-flutter-practice.html)
 
 #### 初始Flutter
 
